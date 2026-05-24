@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>🏛️ República Justa</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#05050F;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;min-height:100vh;font-family:'Courier New',monospace;
+    color:#F0EDE6;user-select:none;padding:1rem;overflow-x:hidden}
+  @keyframes glowPulse{0%,100%{text-shadow:0 0 10px #FFD700}50%{text-shadow:0 0 30px #FFD700,0 0 60px #FFD70066}}
+  @keyframes fadeIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  h1.title{color:#FFD700;font-size:clamp(1.1rem,3vw,1.5rem);text-transform:uppercase;
+    letter-spacing:4px;animation:glowPulse 2s infinite;margin-bottom:0.6rem}
+  #hud{display:flex;gap:1rem;margin-bottom:0.35rem;flex-wrap:wrap;
+    justify-content:center;font-size:0.75rem;color:#aaa}
+  #hud span strong{font-weight:900}
+  #bribe-bar{display:flex;gap:3px;align-items:center}
+  .bribe-pip{width:15px;height:15px;border-radius:3px;background:#222;
+    border:1px solid #444;font-size:8px;display:flex;align-items:center;justify-content:center}
+  .bribe-pip.hit{background:#E63946}
+  #powerup-bar{display:flex;gap:8px;justify-content:center;margin-bottom:0.3rem;min-height:22px;flex-wrap:wrap}
+  .pu-badge{border-radius:20px;padding:2px 10px;font-size:0.65rem;font-weight:700;letter-spacing:1px}
+  #laws-ticker{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;
+    margin-bottom:0.3rem;max-width:600px;min-height:18px}
+  .law-tag{border-radius:20px;padding:2px 8px;font-size:0.6rem}
+  #canvas-wrap{position:relative;border-radius:8px;overflow:hidden;
+    box-shadow:0 0 40px #FFD70030,0 0 80px #0008;border:2px solid #1A1A3A}
+  canvas{display:block;max-width:100%;touch-action:none;cursor:crosshair;image-rendering:pixelated}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:flex-start;background:#0A0A12ee;
+    text-align:center;padding:0.8rem 1rem 1rem;animation:fadeIn 0.35s ease;
+    overflow-y:auto;}
+  .overlay h2{color:#FFD700;font-size:clamp(1rem,4vw,1.8rem);text-transform:uppercase;
+    letter-spacing:2px;text-shadow:0 0 30px #FFD70080;margin-bottom:0.25rem}
+  .overlay p{color:#aaa;font-size:0.75rem;max-width:400px;line-height:1.45;margin-bottom:0.7rem}
+  .overlay .emoji{font-size:2rem;margin-bottom:0.15rem;margin-top:0.3rem}
+  .btn{border:none;padding:0.75rem 1.8rem;font-size:0.9rem;font-weight:900;
+    text-transform:uppercase;letter-spacing:2px;border-radius:4px;cursor:pointer;
+    font-family:'Courier New',monospace}
+  .btn-gold{background:#FFD700;color:#0A0A12;box-shadow:0 0 20px #FFD70060}
+  #levelup-laws{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-bottom:0.8rem;max-width:360px}
+  #controls{margin-top:0.5rem;font-size:0.62rem;color:#444;letter-spacing:1px;text-align:center}
+  #sector-legend{display:flex;gap:0.4rem;margin-top:0.35rem;flex-wrap:wrap;justify-content:center}
+  .sec-label{font-size:0.56rem;letter-spacing:0.5px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<h1 class="title">🏛️ República Justa <button id="sound-btn" onclick="tryInitAudio()" style="background:none;border:1px solid #444;border-radius:20px;color:#666;font-size:0.7rem;padding:2px 8px;cursor:pointer;vertical-align:middle;font-family:'Courier New',monospace">🔇 Sonido</button></h1>
+<div id="hud" style="display:none">
+  <span>⭐ <strong id="h-score" style="color:#FFD700">0</strong></span>
+  <span>🏛️ <strong id="h-level" style="color:#4FC3F7">1/10</strong></span>
+  <span style="display:flex;gap:3px;align-items:center">💰<span id="bribe-bar"></span></span>
+  <span>📜 <strong id="h-laws" style="color:#A0F080">0</strong></span>
+</div>
+<div id="powerup-bar"></div>
+<div id="laws-ticker"></div>
+
+<div id="canvas-wrap">
+  <canvas id="gc" width="600" height="520"></canvas>
+  <div id="overlay-menu" class="overlay">
+    <div class="emoji">🏛️</div>
+    <h2>República Justa</h2>
+    <p>Muévete con ← → y esquiva sobornos 💰.<br>
+    Disparo automático. Caza power-ups flotantes:<br>
+    🛡️ <b>Escudo</b> · 🔥 <b>Doble disparo</b> · ⚡ <b>Triple disparo</b><br>
+    ⚖️ <b>Ley Transversal</b> = ¡pasa de nivel al instante!<br>
+    A partir del nivel 6 aparece el 🤵 <b>Ministro Corrupto</b>.</p>
+    <button class="btn btn-gold" onclick="startGame(0)">▶ Comenzar</button>
+  </div>
+  <div id="overlay-dead" class="overlay" style="display:none">
+    <div class="emoji">😈</div><h2>Corrompido</h2>
+    <p id="dead-msg"></p>
+    <button class="btn btn-gold" onclick="startGame(0)">🔄 Reintentar</button>
+  </div>
+  <div id="overlay-win" class="overlay" style="display:none">
+    <div class="emoji">🏆</div><h2>¡República Justa!</h2>
+    <p id="win-msg"></p>
+    <button class="btn btn-gold" onclick="startGame(0)">🎉 Jugar de Nuevo</button>
+  </div>
+  <div id="overlay-levelup" class="overlay" style="display:none">
+    <div id="lu-icon" style="font-size:2.5rem;margin-bottom:0.2rem"></div>
+    <div id="lu-sublabel" style="font-size:0.62rem;letter-spacing:4px;text-transform:uppercase;margin-bottom:0.2rem"></div>
+    <h2 id="lu-title" style="margin-bottom:0.15rem"></h2>
+    <div style="color:#555;font-size:0.68rem;margin-bottom:0.7rem">¡Liberado de la corrupción!</div>
+    <div id="levelup-laws"></div>
+    <div style="color:#444;font-size:0.62rem;margin-bottom:0.5rem;letter-spacing:1px">SIGUIENTE →</div>
+    <div id="lu-next-icon" style="font-size:1.5rem;margin-bottom:0.1rem"></div>
+    <div id="lu-next-title" style="font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:0.9rem"></div>
+    <button id="lu-btn" class="btn" onclick="nextLevel()">▶ Siguiente Nivel</button>
+  </div>
+</div>
+<div id="controls">← → mover &nbsp;|&nbsp; disparo automático &nbsp;|&nbsp; desliza en móvil</div>
+<div id="sector-legend"></div>
+
+<script>
+// ── CONSTANTS ──────────────────────────────────────────────────────────────
+const W=600,H=520,PW=48,PH=40,CW=44,CH=40,BW=8,BH=18,RW=16,RH=16;
+const PSPD=5,BSPD=7,RSPD=2.2,MAX_BRIBES=10,HITS=3,CPL=2,EPR=8,RPL=3;
+const BOSS_FROM=5; // level index (0-based), so level 6 displayed
+const BossW=80,BossH=72,BOSS_HP_BASE=20;
+
+// Power-up types
+const PU_SHIELD="shield";
+const PU_DOUBLE="double";
+const PU_TRIPLE="triple";
+const PU_LAW="transversal";
+
+const PU_INFO={
+  [PU_SHIELD]:{icon:"🛡️",label:"ESCUDO",color:"#4FC3F7",duration:600},
+  [PU_DOUBLE]:{icon:"🔥",label:"DOBLE",color:"#FF6B35",duration:500},
+  [PU_TRIPLE]:{icon:"⚡",label:"TRIPLE",color:"#FFD700",duration:400},
+  [PU_LAW]:   {icon:"⚖️",label:"LEY TOTAL",color:"#A0F080",duration:0},
+};
+
+const SECTORS=["sanidad","educación","vivienda","bienestar social","i+d",
+               "infraestructuras","cultura","energía renovable","industria","agricultura"];
+const MINISTRIES={
+  "sanidad":"Ministerio de Sanidad","educación":"Ministerio de Educación",
+  "vivienda":"Ministerio de Vivienda","bienestar social":"Ministerio de Bienestar Social",
+  "i+d":"Ministerio de Ciencia e I+D","infraestructuras":"Ministerio de Infraestructuras",
+  "cultura":"Ministerio de Cultura","energía renovable":"Ministerio de Transición Ecológica",
+  "industria":"Ministerio de Industria","agricultura":"Ministerio de Agricultura"
+};
+const COLORS={
+  "sanidad":"#E63946","educación":"#2EC4B6","vivienda":"#FF6B35",
+  "bienestar social":"#8338EC","i+d":"#06D6A0","infraestructuras":"#FFB703",
+  "cultura":"#FB5607","energía renovable":"#70E000","industria":"#4CC9F0","agricultura":"#A7C957"
+};
+const ICONS={
+  "sanidad":"🏥","educación":"📚","vivienda":"🏠","bienestar social":"🤝",
+  "i+d":"🔬","infraestructuras":"🏗️","cultura":"🎭","energía renovable":"🌱",
+  "industria":"⚙️","agricultura":"🌾"
+};
+const LAWS={
+  "sanidad":["Salud Mental Pública","Genéricos Gratis","Sanidad Rural","Listas de Espera Cero"],
+  "educación":["Universidad Gratis","Becas Igualitarias","PC para Todos","Ed. Cívica"],
+  "vivienda":["Alquiler Justo","Vivienda Social","Anti-Desahucios","Barrios Verdes"],
+  "bienestar social":["Renta Básica","Dependencia Digna","Guarderías Públicas","Integración Plena"],
+  "i+d":["Fondos I+D x3","Ciencia Abierta","Becas Investigación","Spin-offs Públicos"],
+  "infraestructuras":["Tren Rural","Banda Ancha Rural","Puentes Seguros","Transporte Gratis"],
+  "cultura":["Cine Público","Museos Gratis","Cultura en Escuelas","Patrimonio Protegido"],
+  "energía renovable":["Solar para Todos","Eólica Comunitaria","Fin al Carbón","Coches Eléctricos"],
+  "industria":["Industria Verde","Empleo Garantizado","Reindustrialización","PYME Apoyo"],
+  "agricultura":["Agricultura Ecológica","Precio Justo Campo","Jóvenes Agricultores","Agua Pública"]
+};
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let S=null,raf=null,keys={},audio=null,gamePhase="menu";
+function uid(){return Math.random().toString(36).slice(2)}
+
+function makeLevelGrid(lv){
+  const enemies=[];
+  for(let r=0;r<RPL;r++){
+    const sec=SECTORS[(lv*RPL+r)%SECTORS.length];
+    for(let c=0;c<EPR;c++)
+      enemies.push({id:uid(),sector:sec,x:34+c*68,y:50+r*62,hp:HITS,alive:true,flash:0});
+  }
+  return enemies;
+}
+
+function makeBoss(lv){
+  const sec=SECTORS[lv%SECTORS.length];
+  const xtraHp=(lv-BOSS_FROM)*5;
+  return{alive:true,x:W/2-BossW/2,y:-BossH,hp:BOSS_HP_BASE+xtraHp,maxHp:BOSS_HP_BASE+xtraHp,
+    dir:1,speed:1.2+(lv-BOSS_FROM)*0.3,sector:sec,flash:0,
+    bribeTimer:0,burstTimer:0,burstCount:0,burstActive:false,reinforceTimer:0,phase:"entry",entryTimer:60};
+}
+
+function freshState(lv=0){
+  const sk={};SECTORS.forEach(s=>sk[s]=0);
+  return{
+    player:{x:W/2-PW/2,y:H-70},
+    bullets:[],bribes:[],
+    enemies:makeLevelGrid(lv),
+    boss:null,bossPhase:"none",
+    powerups:[],          // floating power-up items on screen
+    activeEffects:{       // active player effects
+      shield:0,           // frames remaining
+      shootMode:"single", // single | double | triple
+      shootModeTimer:0,
+    },
+    puSpawnTimer:300+Math.floor(Math.random()*200),
+    bribesReceived:0,promulgated:[],sectorKills:sk,score:0,level:lv,
+    enemyDir:1,enemyMoveTimer:0,bribeTimer:0,shotCooldown:0,
+    flashTexts:[],phase:"play"
+  };
+}
+
+// ── AUDIO ──────────────────────────────────────────────────────────────────
+function stopAudio(){
+  if(audio){
+    try{audio.loop.stop();audio.loop.dispose();}catch(_){}
+    try{Object.values(audio).forEach(n=>{try{n.dispose()}catch(_){}});}catch(_){}
+    audio=null;
+  }
+  try{Tone.Transport.stop();}catch(_){}
+}
+function initAudio(){
+  stopAudio();
+  const rev=new Tone.Reverb({decay:1.2,wet:0.18}).toDestination();
+  const shootSynth=new Tone.Synth({oscillator:{type:"square"},envelope:{attack:0.001,decay:0.08,sustain:0,release:0.05},volume:-18}).connect(rev);
+  const hitSynth=new Tone.MembraneSynth({pitchDecay:0.04,octaves:4,envelope:{attack:0.001,decay:0.12,sustain:0,release:0.1},volume:-10}).toDestination();
+  const lawSynth=new Tone.PolySynth(Tone.Synth,{oscillator:{type:"triangle"},envelope:{attack:0.01,decay:0.3,sustain:0.2,release:0.6},volume:-8}).connect(rev);
+  const bribeSynth=new Tone.Synth({oscillator:{type:"sawtooth"},envelope:{attack:0.001,decay:0.2,sustain:0,release:0.1},volume:-12}).connect(rev);
+  const melodySynth=new Tone.Synth({oscillator:{type:"square"},envelope:{attack:0.001,decay:0.1,sustain:0.3,release:0.1},volume:-20}).connect(rev);
+  const bassSynth=new Tone.Synth({oscillator:{type:"triangle"},envelope:{attack:0.01,decay:0.2,sustain:0.4,release:0.1},volume:-22}).toDestination();
+  const bossSynth=new Tone.Synth({oscillator:{type:"sawtooth"},envelope:{attack:0.01,decay:0.3,sustain:0.1,release:0.2},volume:-14}).toDestination();
+  const puSynth=new Tone.Synth({oscillator:{type:"sine"},envelope:{attack:0.01,decay:0.2,sustain:0.1,release:0.3},volume:-10}).connect(rev);
+  const melody=["C4","E4","G4","B4","A4","F4","D4","G4","C5","B4","G4","E4","F4","A4","C5","G4"];
+  const bass=["C2","C2","G2","G2","A2","F2","F2","G2"];
+  const loop=new Tone.Sequence((time,step)=>{
+    melodySynth.triggerAttackRelease(melody[step%melody.length],"16n",time);
+    if(step%2===0)bassSynth.triggerAttackRelease(bass[Math.floor(step/2)%bass.length],"8n",time);
+  },[...Array(16).keys()],"8n");
+  loop.start(0);Tone.Transport.bpm.value=148;Tone.Transport.start();
+  audio={shootSynth,hitSynth,lawSynth,bribeSynth,melodySynth,bassSynth,bossSynth,puSynth,loop};
+}
+function playShoot(){if(!audioEnabled)return;try{audio?.shootSynth.triggerAttackRelease("C5","32n")}catch(_){}}
+function playHit(hp){if(!audioEnabled)return;try{audio?.hitSynth.triggerAttackRelease(hp===0?"A1":"C2","16n")}catch(_){}}
+function playLaw(){if(!audioEnabled)return;try{audio?.lawSynth.triggerAttackRelease(["C4","E4","G4","C5"],"4n")}catch(_){}}
+function playBribe(){if(!audioEnabled)return;try{const s=audio?.bribeSynth,n=Tone.now();s.triggerAttackRelease("A3","16n",n);s.triggerAttackRelease("F3","16n",n+0.1);}catch(_){}}
+function playBossHit(){if(!audioEnabled)return;try{audio?.bossSynth.triggerAttackRelease("D2","16n")}catch(_){}}
+function playBossDead(){if(!audioEnabled)return;try{audio?.lawSynth.triggerAttackRelease(["C3","E3","G3","B3","C4"],"2n")}catch(_){}}
+function playBossEntry(){if(!audioEnabled)return;try{const b=audio?.bossSynth,n=Tone.now();["A2","C3","E3","A3"].forEach((note,i)=>b.triggerAttackRelease(note,"8n",n+i*0.15));}catch(_){}}
+function playPowerUp(type){
+  if(!audioEnabled)return;
+  try{
+    const s=audio?.puSynth,n=Tone.now();
+    if(type===PU_LAW){["C4","E4","G4","C5","E5"].forEach((note,i)=>s.triggerAttackRelease(note,"16n",n+i*0.08));}
+    else if(type===PU_SHIELD){s.triggerAttackRelease("G4","8n",n);s.triggerAttackRelease("C5","8n",n+0.12);}
+    else{s.triggerAttackRelease("E5","16n",n);s.triggerAttackRelease("G5","16n",n+0.08);}
+  }catch(_){}
+}
+
+// ── GAME LOOP ──────────────────────────────────────────────────────────────
+const canvas=document.getElementById("gc");
+const ctx=canvas.getContext("2d");
+
+function loop(){
+  update(S);draw(S);updateHUD();
+  if(S.phase==="dead"){stopAudio();showPhase("dead");return;}
+  if(S.phase==="levelup"){showLevelUp();return;}
+  if(S.phase==="win"){stopAudio();showPhase("win");return;}
+  raf=requestAnimationFrame(loop);
+}
+
+// ── UPDATE ─────────────────────────────────────────────────────────────────
+function update(s){
+  const ae=s.activeEffects;
+
+  // Player movement
+  if(keys["ArrowLeft"]||keys["a"])s.player.x=Math.max(0,s.player.x-PSPD);
+  if(keys["ArrowRight"]||keys["d"])s.player.x=Math.min(W-PW,s.player.x+PSPD);
+
+  // Active effects timers
+  if(ae.shield>0)ae.shield--;
+  if(ae.shootModeTimer>0){ae.shootModeTimer--;if(ae.shootModeTimer===0)ae.shootMode="single";}
+
+  // Shoot — mode determines spread
+  s.shotCooldown=Math.max(0,s.shotCooldown-1);
+  if(s.shotCooldown===0){
+    const cx=s.player.x+PW/2-BW/2;
+    const cy=s.player.y-10;
+    if(ae.shootMode==="triple"){
+      s.bullets.push({id:uid(),x:cx-14,y:cy,angle:-0.18});
+      s.bullets.push({id:uid(),x:cx,y:cy,angle:0});
+      s.bullets.push({id:uid(),x:cx+14,y:cy,angle:0.18});
+    }else if(ae.shootMode==="double"){
+      s.bullets.push({id:uid(),x:cx-8,y:cy,angle:0});
+      s.bullets.push({id:uid(),x:cx+8,y:cy,angle:0});
+    }else{
+      s.bullets.push({id:uid(),x:cx,y:cy,angle:0});
+    }
+    s.shotCooldown=ae.shootMode==="triple"?20:ae.shootMode==="double"?16:18;
+    playShoot();
+  }
+  s.bullets=s.bullets.filter(b=>b.y>-20&&b.x>-20&&b.x<W+20);
+  s.bullets.forEach(b=>{b.y-=BSPD;if(b.angle)b.x+=Math.sin(b.angle)*BSPD;});
+
+  // Regular enemies movement
+  const alive=s.enemies.filter(e=>e.alive);
+  if(alive.length>0){
+    s.enemyMoveTimer++;
+    const spd=Math.max(6,22-alive.length*0.4);
+    if(s.enemyMoveTimer>=spd){
+      s.enemyMoveTimer=0;
+      const lx=Math.min(...alive.map(e=>e.x));
+      const rx=Math.max(...alive.map(e=>e.x+CW));
+      if((s.enemyDir===1&&rx>=W-10)||(s.enemyDir===-1&&lx<=10)){
+        s.enemies.forEach(e=>{if(e.alive)e.y+=18;});s.enemyDir*=-1;
+      }else{s.enemies.forEach(e=>{if(e.alive)e.x+=s.enemyDir*14;});}
+    }
+    s.enemies.forEach(e=>{if(e.flash>0)e.flash--;});
+    // Regular bribe fire
+    s.bribeTimer++;
+    if(s.bribeTimer>=55){
+      s.bribeTimer=0;
+      const sh=alive[Math.floor(Math.random()*alive.length)];
+      s.bribes.push({id:uid(),x:sh.x+CW/2-RW/2,y:sh.y+CH,speed:RSPD+Math.random()*1.2});
+    }
+  }
+
+  // ── POWER-UP SPAWN ────────────────────────────────────────────────────────
+  s.puSpawnTimer--;
+  if(s.puSpawnTimer<=0){
+    s.puSpawnTimer=350+Math.floor(Math.random()*300);
+    // Weighted random: law is rarer
+    const roll=Math.random();
+    let type;
+    if(roll<0.08) type=PU_LAW;
+    else if(roll<0.35) type=PU_TRIPLE;
+    else if(roll<0.65) type=PU_DOUBLE;
+    else type=PU_SHIELD;
+    // Start from a random enemy position or random x
+    const aliveSrc=s.enemies.filter(e=>e.alive);
+    const startX=aliveSrc.length>0
+      ? aliveSrc[Math.floor(Math.random()*aliveSrc.length)].x+CW/2-16
+      : Math.random()*(W-40)+10;
+    const startY=aliveSrc.length>0
+      ? aliveSrc[Math.floor(Math.random()*aliveSrc.length)].y+CH+5
+      : 60+Math.random()*160;
+    s.powerups.push({id:uid(),type,x:startX,y:startY,dx:(Math.random()-0.5)*2.2,dy:0.6+Math.random()*0.5,rot:0,life:600});
+  }
+
+  // Move power-ups
+  s.powerups.forEach(p=>{
+    p.x+=p.dx;p.y+=p.dy;p.rot+=0.05;p.life--;
+    if(p.x<10||p.x>W-40)p.dx*=-1;
+  });
+  s.powerups=s.powerups.filter(p=>p.life>0&&p.y<H+30);
+
+  // Player collects power-up
+  const PUW=32,PUH=32;
+  s.powerups=s.powerups.filter(p=>{
+    if(p.x+PUW>s.player.x&&p.x<s.player.x+PW&&p.y+PUH>s.player.y&&p.y<s.player.y+PH){
+      playPowerUp(p.type);
+      if(p.type===PU_SHIELD){
+        ae.shield=PU_INFO[PU_SHIELD].duration;
+        s.flashTexts.push({id:uid(),x:s.player.x,y:s.player.y-25,text:"🛡️ ESCUDO!",life:50,color:"#4FC3F7",big:false});
+      } else if(p.type===PU_DOUBLE){
+        ae.shootMode="double";ae.shootModeTimer=PU_INFO[PU_DOUBLE].duration;
+        s.flashTexts.push({id:uid(),x:s.player.x-10,y:s.player.y-25,text:"🔥 DOBLE DISPARO!",life:50,color:"#FF6B35",big:false});
+      } else if(p.type===PU_TRIPLE){
+        ae.shootMode="triple";ae.shootModeTimer=PU_INFO[PU_TRIPLE].duration;
+        s.flashTexts.push({id:uid(),x:s.player.x-10,y:s.player.y-25,text:"⚡ TRIPLE DISPARO!",life:50,color:"#FFD700",big:false});
+      } else if(p.type===PU_LAW){
+        s.score+=1000;
+        s.flashTexts.push({id:uid(),x:W/2-100,y:H/2-10,text:"⚖️ ¡LEY TRANSVERSAL! +1000",life:120,color:"#A0F080",big:true});
+        // Kill all regular enemies instantly
+        s.enemies.forEach(e=>e.alive=false);
+        // Kill boss too if active
+        if(s.boss&&s.boss.alive){s.boss.alive=false;s.bossPhase="dead";s.score+=2000;}
+        setTimeout(()=>{if(S&&S.phase==="play")S.phase=s.level>=9?"win":"levelup";},800);
+      }
+      return false;
+    }
+    return true;
+  });
+
+  // Bullet hits regular enemies
+  s.bullets=s.bullets.filter(bullet=>{
+    for(let e of s.enemies){
+      if(!e.alive)continue;
+      if(bullet.x<e.x+CW&&bullet.x+BW>e.x&&bullet.y<e.y+CH&&bullet.y+BH>e.y){
+        e.hp--;e.flash=8;playHit(e.hp);
+        if(e.hp<=0){
+          e.alive=false;s.score+=100;s.sectorKills[e.sector]++;
+          s.flashTexts.push({id:uid(),x:e.x,y:e.y,text:"💥+100",life:35,color:"#FFD700"});
+          if(s.sectorKills[e.sector]%CPL===0){
+            const idx=Math.floor(s.sectorKills[e.sector]/CPL)-1;
+            const lawName=LAWS[e.sector][Math.min(idx,LAWS[e.sector].length-1)];
+            const key=e.sector+"-"+idx;
+            if(!s.promulgated.find(p=>p.key===key)){
+              s.promulgated.push({key,sector:e.sector,name:lawName});
+              s.score+=500;playLaw();
+              s.flashTexts.push({id:uid(),x:W/2-80,y:H/2-20,text:"📜 "+lawName,life:90,color:COLORS[e.sector],big:true});
+            }
+          }
+        }
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // ── BOSS ─────────────────────────────────────────────────────────────────
+  if(s.level>=BOSS_FROM){
+    const allRegularDead=s.enemies.every(e=>!e.alive);
+    if(allRegularDead&&s.bossPhase==="none"){
+      s.bossPhase="active";s.boss=makeBoss(s.level);playBossEntry();
+      s.flashTexts.push({id:uid(),x:W/2-110,y:H/2,text:"🤵 ¡MINISTRO CORRUPTO!",life:120,color:"#FF0040",big:true});
+    }
+    if(s.boss&&s.boss.alive&&s.bossPhase==="active"){
+      const b=s.boss;
+      if(b.phase==="entry"){b.entryTimer--;b.y=Math.min(40,b.y+(40-b.y)*0.08+0.5);if(b.entryTimer<=0)b.phase="fight";}
+      else{
+        b.x+=b.dir*b.speed;if(b.x<=10||b.x>=W-BossW-10)b.dir*=-1;
+        if(b.flash>0)b.flash--;
+        b.burstTimer++;
+        const bi=90-Math.min(50,(s.level-BOSS_FROM)*8);
+        if(!b.burstActive&&b.burstTimer>=bi){b.burstActive=true;b.burstCount=0;b.burstTimer=0;}
+        if(b.burstActive){b.burstTimer++;if(b.burstTimer%8===0){
+          const cx=b.x+BossW/2,cy=b.y+BossH;
+          [-18,0,18].forEach(off=>s.bribes.push({id:uid(),x:cx+off-RW/2,y:cy,speed:RSPD*1.4+Math.random()*0.8}));
+          b.burstCount++;if(b.burstCount>=3){b.burstActive=false;b.burstTimer=0;}
+        }}
+        b.reinforceTimer++;
+        const ri=200-Math.min(100,(s.level-BOSS_FROM)*15);
+        if(b.reinforceTimer>=ri){b.reinforceTimer=0;
+          const sec=SECTORS[(s.level*RPL)%SECTORS.length];
+          s.enemies.push({id:uid(),sector:sec,x:Math.random()*(W-CW-20)+10,y:80+Math.random()*60,hp:HITS,alive:true,flash:0});
+          s.flashTexts.push({id:uid(),x:b.x,y:b.y+BossH+10,text:"😈 ¡Refuerzo!",life:45,color:"#FF6B35"});
+        }
+      }
+      // Bullets hit boss
+      s.bullets=s.bullets.filter(bullet=>{
+        if(bullet.x<b.x+BossW&&bullet.x+BW>b.x&&bullet.y<b.y+BossH&&bullet.y+BH>b.y){
+          b.hp--;b.flash=6;playBossHit();
+          s.flashTexts.push({id:uid(),x:b.x+BossW/2-5,y:b.y,text:"-1",life:22,color:"#fff"});
+          if(b.hp<=0){b.alive=false;s.score+=2000;playBossDead();s.bossPhase="dead";
+            s.enemies.forEach(e=>e.alive=false);
+            s.flashTexts.push({id:uid(),x:W/2-120,y:H/2-10,text:"🏆 ¡MINISTRO DERROTADO! +2000",life:120,color:"#FFD700",big:true});
+          }
+          return false;
+        }
+        return true;
+      });
+    }
+  }
+
+  // Bribes movement & collision
+  s.bribes.forEach(b=>b.y+=b.speed);
+  s.bribes=s.bribes.filter(b=>{
+    // Shield blocks bribes
+    if(ae.shield>0&&b.y+RH>=s.player.y-8&&b.y<=s.player.y+PH+8&&b.x+RW>=s.player.x-8&&b.x<=s.player.x+PW+8){
+      s.flashTexts.push({id:uid(),x:b.x,y:b.y,text:"🛡️",life:20,color:"#4FC3F7"});
+      return false;
+    }
+    if(b.y+RH>=s.player.y&&b.y<=s.player.y+PH&&b.x+RW>=s.player.x&&b.x<=s.player.x+PW){
+      s.bribesReceived++;playBribe();
+      s.flashTexts.push({id:uid(),x:s.player.x,y:s.player.y-20,text:"💰Soborno!",life:40,color:"#FF6B35"});
+      return false;
+    }
+    return b.y<=H;
+  });
+
+  // Flash texts
+  s.flashTexts=s.flashTexts.filter(f=>f.life>0);
+  s.flashTexts.forEach(f=>{f.life--;f.y-=0.5;});
+
+  // Win conditions
+  const allDead=s.enemies.every(e=>!e.alive);
+  const bossOk=s.level<BOSS_FROM||s.bossPhase==="dead"||(s.bossPhase==="none"&&allDead);
+  if(allDead&&bossOk&&s.phase==="play")s.phase=s.level>=9?"win":"levelup";
+  if(s.bribesReceived>=MAX_BRIBES)s.phase="dead";
+  if(s.enemies.some(e=>e.alive&&e.y+CH>=s.player.y))s.phase="dead";
+  if(s.boss&&s.boss.alive&&s.boss.y+BossH>=s.player.y)s.phase="dead";
+}
+
+// ── DRAW ───────────────────────────────────────────────────────────────────
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+}
+
+function draw(s){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle="#0A0A12";ctx.fillRect(0,0,W,H);
+  for(let y=0;y<H;y+=4){ctx.fillStyle="rgba(0,0,0,0.18)";ctx.fillRect(0,y,W,2);}
+  ctx.fillStyle="#ffffff18";
+  for(let i=0;i<40;i++)ctx.fillRect((i*137+50)%W,(i*83+30)%(H-100),1.5,1.5);
+
+  // Regular enemies
+  s.enemies.forEach(e=>{
+    if(!e.alive)return;
+    const col=COLORS[e.sector];
+    ctx.save();ctx.shadowColor=col;ctx.shadowBlur=e.flash>0?20:8;
+    ctx.fillStyle=e.flash>0?"#fff":col+"33";roundRect(e.x,e.y,CW,CH,6);ctx.fill();
+    ctx.strokeStyle=e.flash>0?"#fff":col;ctx.lineWidth=2;roundRect(e.x,e.y,CW,CH,6);ctx.stroke();
+    ctx.restore();
+    ctx.font="20px serif";ctx.textAlign="center";ctx.fillText("😈",e.x+CW/2,e.y+22);
+    for(let i=0;i<HITS;i++){ctx.fillStyle=i<e.hp?col:"#333";ctx.fillRect(e.x+4+i*13,e.y+CH-7,10,4);}
+  });
+
+  // Power-ups (floating between enemies)
+  s.powerups.forEach(p=>{
+    const info=PU_INFO[p.type];
+    const pulse=0.7+0.3*Math.sin(Date.now()/200);
+    ctx.save();
+    ctx.translate(p.x+16,p.y+16);
+    ctx.rotate(p.rot);
+    ctx.shadowColor=info.color;
+    ctx.shadowBlur=16*pulse;
+    // Glow ring
+    ctx.strokeStyle=info.color;
+    ctx.lineWidth=2;
+    ctx.globalAlpha=0.7*pulse;
+    ctx.beginPath();ctx.arc(0,0,18,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=1;
+    // Icon
+    ctx.font="22px serif";ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText(info.icon,0,0);
+    // Fading when about to expire
+    if(p.life<120)ctx.globalAlpha=p.life/120;
+    ctx.restore();
+
+    // Label under it
+    ctx.save();
+    ctx.font="bold 7px 'Courier New',monospace";ctx.textAlign="center";
+    ctx.fillStyle=info.color;ctx.shadowColor=info.color;ctx.shadowBlur=6;
+    if(p.life<120)ctx.globalAlpha=p.life/120;
+    ctx.fillText(info.label,p.x+16,p.y+36);
+    ctx.restore();
+  });
+
+  // Boss warning flash
+  if(s.level>=BOSS_FROM&&s.bossPhase==="none"&&s.enemies.every(e=>!e.alive)){
+    if(Math.floor(Date.now()/400)%2){
+      ctx.save();ctx.font="bold 18px 'Courier New',monospace";ctx.textAlign="center";
+      ctx.fillStyle="#FF0040";ctx.shadowColor="#FF0040";ctx.shadowBlur=15;
+      ctx.fillText("⚠️  MINISTRO CORRUPTO EN CAMINO  ⚠️",W/2,H/2);ctx.restore();
+    }
+  }
+
+  // Boss
+  if(s.boss&&s.boss.alive&&s.bossPhase==="active"){
+    const b=s.boss;const col=COLORS[b.sector];
+    const hpPct=b.hp/b.maxHp;
+    const bc=hpPct>0.5?col:hpPct>0.25?"#FF8800":"#FF0000";
+    ctx.save();ctx.shadowColor=bc;ctx.shadowBlur=b.flash>0?35:20;
+    ctx.fillStyle=b.flash>0?"#fff":bc+"44";roundRect(b.x,b.y,BossW,BossH,10);ctx.fill();
+    ctx.strokeStyle=b.flash>0?"#fff":bc;ctx.lineWidth=3;roundRect(b.x,b.y,BossW,BossH,10);ctx.stroke();
+    ctx.restore();
+    ctx.font="38px serif";ctx.textAlign="center";ctx.fillText("🤵",b.x+BossW/2,b.y+44);
+    ctx.save();ctx.font="bold 8px 'Courier New',monospace";ctx.textAlign="center";
+    ctx.fillStyle=bc;ctx.shadowColor=bc;ctx.shadowBlur=6;ctx.fillText("MINISTRO",b.x+BossW/2,b.y+60);ctx.restore();
+    const bw=BossW-8;
+    ctx.fillStyle="#300";ctx.fillRect(b.x+4,b.y+BossH+4,bw,7);
+    ctx.fillStyle=bc;ctx.fillRect(b.x+4,b.y+BossH+4,bw*hpPct,7);
+    ctx.strokeStyle="#555";ctx.lineWidth=1;ctx.strokeRect(b.x+4,b.y+BossH+4,bw,7);
+    ctx.font="8px 'Courier New',monospace";ctx.textAlign="center";ctx.fillStyle="#aaa";
+    ctx.fillText(b.hp+"/"+b.maxHp,b.x+BossW/2,b.y+BossH+18);
+  }
+
+  // Bullets
+  s.bullets.forEach(b=>{
+    const ae=s.activeEffects;
+    const col=ae.shootMode==="triple"?"#FFD700":ae.shootMode==="double"?"#FF6B35":"#A0F080";
+    ctx.save();ctx.shadowColor=col;ctx.shadowBlur=12;ctx.fillStyle=col;
+    ctx.fillRect(b.x,b.y,BW,BH);ctx.font="10px serif";ctx.textAlign="center";
+    ctx.fillText("📜",b.x+BW/2,b.y+10);ctx.restore();
+  });
+
+  // Bribes
+  s.bribes.forEach(b=>{
+    ctx.save();ctx.shadowColor="#FFD700";ctx.shadowBlur=10;
+    ctx.font="16px serif";ctx.textAlign="center";ctx.fillText("💰",b.x+RW/2,b.y+RH);ctx.restore();
+  });
+
+  // Player + shield
+  const px=s.player.x,py=s.player.y;
+  const ae=s.activeEffects;
+  const health=Math.max(0,1-s.bribesReceived/MAX_BRIBES);
+  ctx.save();
+  if(ae.shield>0){
+    const pulse=0.6+0.4*Math.sin(Date.now()/100);
+    ctx.shadowColor="#4FC3F7";ctx.shadowBlur=28*pulse;
+    ctx.strokeStyle="#4FC3F7";ctx.lineWidth=2;ctx.globalAlpha=0.5*pulse;
+    ctx.beginPath();ctx.arc(px+PW/2,py+PH/2,34,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+  ctx.shadowColor="#4FC3F7";ctx.shadowBlur=16;
+  ctx.fillStyle="#1A2A3A";roundRect(px,py+14,PW,PH-14,6);ctx.fill();
+  ctx.strokeStyle=ae.shield>0?"#4FC3F7":ae.shootMode==="triple"?"#FFD700":ae.shootMode==="double"?"#FF6B35":"#4FC3F7";
+  ctx.lineWidth=2;roundRect(px,py+14,PW,PH-14,6);ctx.stroke();
+  ctx.fillStyle=ctx.strokeStyle;ctx.fillRect(px+PW/2-4,py,8,20);
+  ctx.font="22px serif";ctx.textAlign="center";ctx.fillText("😇",px+PW/2,py+38);
+  ctx.restore();
+  ctx.fillStyle="#333";ctx.fillRect(px,py+PH+4,PW,5);
+  ctx.fillStyle=health>0.5?"#A0F080":health>0.25?"#FFD700":"#E63946";
+  ctx.fillRect(px,py+PH+4,PW*health,5);
+
+  // Flash texts
+  s.flashTexts.forEach(f=>{
+    ctx.save();ctx.globalAlpha=Math.min(1,f.life/20);
+    ctx.font=f.big?"bold 15px Georgia,serif":"bold 11px Georgia,serif";
+    ctx.textAlign="center";ctx.fillStyle=f.color;ctx.shadowColor=f.color;ctx.shadowBlur=8;
+    ctx.fillText(f.text,f.x+(f.big?110:20),f.y);ctx.restore();
+  });
+
+  // Level label
+  const lvlSecs=[];
+  for(let r=0;r<RPL;r++)lvlSecs.push(SECTORS[(s.level*RPL+r)%SECTORS.length]);
+  ctx.save();ctx.font="bold 10px 'Courier New',monospace";ctx.textAlign="right";
+  ctx.fillStyle=s.level>=BOSS_FROM?"#FF6B35aa":"#444";
+  ctx.fillText("NIVEL "+(s.level+1)+"/10 · "+lvlSecs.map(sec=>ICONS[sec]).join(" ")+(s.level>=BOSS_FROM?" 🤵":""),W-8,H-8);
+  ctx.restore();
+  ctx.strokeStyle="#2A2A4A";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(0,py+PH+14);ctx.lineTo(W,py+PH+14);ctx.stroke();
+}
+
+// ── HUD ────────────────────────────────────────────────────────────────────
+function updateHUD(){
+  document.getElementById("h-score").textContent=S.score;
+  document.getElementById("h-level").textContent=(S.level+1)+"/10";
+  document.getElementById("h-laws").textContent=S.promulgated.length;
+  const bar=document.getElementById("bribe-bar");bar.innerHTML="";
+  for(let i=0;i<MAX_BRIBES;i++){
+    const d=document.createElement("div");
+    d.className="bribe-pip"+(i<S.bribesReceived?" hit":"");
+    d.textContent=i<S.bribesReceived?"💰":"";bar.appendChild(d);
+  }
+  // Power-up badges
+  const puBar=document.getElementById("powerup-bar");puBar.innerHTML="";
+  const ae=S.activeEffects;
+  if(ae.shield>0){
+    const d=document.createElement("div");d.className="pu-badge";
+    d.style.background="#4FC3F722";d.style.border="1px solid #4FC3F7";d.style.color="#4FC3F7";
+    d.textContent="🛡️ ESCUDO "+(Math.ceil(ae.shield/60))+"s";puBar.appendChild(d);
+  }
+  if(ae.shootMode!=="single"){
+    const info=PU_INFO[ae.shootMode==="triple"?PU_TRIPLE:PU_DOUBLE];
+    const d=document.createElement("div");d.className="pu-badge";
+    d.style.background=info.color+"22";d.style.border="1px solid "+info.color;d.style.color=info.color;
+    d.textContent=info.icon+" "+info.label+" "+(Math.ceil(ae.shootModeTimer/60))+"s";puBar.appendChild(d);
+  }
+  // Laws ticker
+  const ticker=document.getElementById("laws-ticker");ticker.innerHTML="";
+  S.promulgated.forEach(l=>{
+    const d=document.createElement("div");d.className="law-tag";
+    d.style.background=COLORS[l.sector]+"33";d.style.border="1px solid "+COLORS[l.sector];
+    d.style.color=COLORS[l.sector];d.textContent=ICONS[l.sector]+" "+l.name;ticker.appendChild(d);
+  });
+}
+
+function buildSectorLegend(){
+  const el=document.getElementById("sector-legend");el.innerHTML="";
+  SECTORS.forEach((s,i)=>{
+    const d=document.createElement("div");d.className="sec-label";d.id="sec-"+i;
+    d.style.color=COLORS[s];d.textContent=ICONS[s]+" "+s;el.appendChild(d);
+  });
+}
+function updateSectorLegend(){
+  SECTORS.forEach((s,i)=>{
+    const el=document.getElementById("sec-"+i);if(!el||!S)return;
+    if(S.level>i){el.style.color="#A0F080";el.style.opacity="0.5";el.textContent=ICONS[s]+" "+s+" ✓";}
+    else{el.style.color=COLORS[s];el.style.opacity="1";el.textContent=ICONS[s]+" "+s;}
+  });
+}
+
+function hideAll(){["overlay-menu","overlay-dead","overlay-win","overlay-levelup"].forEach(id=>document.getElementById(id).style.display="none");}
+function showPhase(ph){
+  hideAll();gamePhase=ph;
+  if(ph==="dead"){
+    document.getElementById("dead-msg").textContent="Recibiste "+MAX_BRIBES+" sobornos. Nivel "+(S.level+1)+"/10 · Leyes: "+S.promulgated.length+" · Score: "+S.score;
+    document.getElementById("overlay-dead").style.display="flex";
+  }else if(ph==="win"){
+    document.getElementById("win-msg").textContent="¡Completaste los 10 niveles! "+S.promulgated.length+" leyes aprobadas. ¡La sociedad es libre! Score: "+S.score;
+    document.getElementById("overlay-win").style.display="flex";
+  }
+  document.getElementById("hud").style.display="none";
+}
+function showLevelUp(){
+  cancelAnimationFrame(raf);raf=null;
+  const lv=S.level,sec=SECTORS[lv],nextSec=SECTORS[lv+1],col=COLORS[sec];
+  document.getElementById("lu-icon").textContent=ICONS[sec];
+  document.getElementById("lu-sublabel").textContent="Nivel "+(lv+1)+" completado"+(lv>=BOSS_FROM?" 🤵":"");
+  document.getElementById("lu-sublabel").style.color=col;
+  const t=document.getElementById("lu-title");t.textContent=MINISTRIES[sec];t.style.textShadow="0 0 30px "+col;
+  const lawsEl=document.getElementById("levelup-laws");lawsEl.innerHTML="";
+  S.promulgated.filter(l=>l.sector===sec).forEach(l=>{
+    const d=document.createElement("div");d.className="law-tag";
+    d.style.background=col+"22";d.style.border="1px solid "+col+"55";d.style.color=col;
+    d.textContent="📜 "+l.name;lawsEl.appendChild(d);
+  });
+  document.getElementById("lu-next-icon").textContent=ICONS[nextSec];
+  document.getElementById("lu-next-title").textContent=MINISTRIES[nextSec]+(lv+1>=BOSS_FROM?" 🤵":"");
+  document.getElementById("lu-next-title").style.color=COLORS[nextSec];
+  const btn=document.getElementById("lu-btn");btn.style.background=col;btn.style.boxShadow="0 0 20px "+col+"60";
+  hideAll();document.getElementById("overlay-levelup").style.display="flex";
+  gamePhase="levelup";updateSectorLegend();
+}
+
+let audioEnabled=false;
+
+async function tryInitAudio(){
+  try{
+    await Tone.start();initAudio();audioEnabled=true;
+    document.getElementById("sound-btn").textContent="🔊";
+  }catch(e){console.warn("Audio no disponible:",e);}
+}
+
+async function startGame(lv=0){
+  if(!audioEnabled){
+    try{await Tone.start();initAudio();audioEnabled=true;document.getElementById("sound-btn").textContent="🔊";}
+    catch(e){console.warn("Audio bloqueado, jugando sin sonido");}
+  }
+  S=freshState(lv);
+  hideAll();document.getElementById("hud").style.display="flex";
+  gamePhase="play";cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);updateSectorLegend();
+}
+function nextLevel(){
+  const prev=S;S=freshState(prev.level+1);
+  S.score=prev.score;S.promulgated=prev.promulgated;S.sectorKills=prev.sectorKills;S.bribesReceived=prev.bribesReceived;
+  hideAll();document.getElementById("hud").style.display="flex";
+  gamePhase="play";cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);updateSectorLegend();
+}
+
+document.addEventListener("keydown",e=>{keys[e.key]=true;
+  if([" ","ArrowLeft","ArrowRight","ArrowUp"].includes(e.key))e.preventDefault();});
+document.addEventListener("keyup",e=>{keys[e.key]=false;});
+canvas.addEventListener("mousemove",e=>{
+  if(gamePhase!=="play"||!S)return;
+  const r=canvas.getBoundingClientRect();
+  S.player.x=Math.max(0,Math.min(W-PW,(e.clientX-r.left)*(W/r.width)-PW/2));
+});
+canvas.addEventListener("touchmove",e=>{
+  e.preventDefault();if(gamePhase!=="play"||!S)return;
+  const r=canvas.getBoundingClientRect();
+  S.player.x=Math.max(0,Math.min(W-PW,(e.touches[0].clientX-r.left)*(W/r.width)-PW/2));
+},{passive:false});
+
+buildSectorLegend();
+</script>
+</body>
+</html>
